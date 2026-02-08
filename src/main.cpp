@@ -27,6 +27,7 @@ namespace
         // out += "Version " OPENLYRICS_VERSION " (" __DATE__ "):\n"
         // "\n";
         out += "Version " OPENLYRICS_VERSION " (" __DATE__ "):\n"
+               "- Better support non-latin whitespace characters for word wrapping\n"
                "- Fix auto-search triggering for missing local files\n"
                "\n";
         out += "Version 1.13 (2026-01-17):\n"
