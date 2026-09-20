@@ -5,12 +5,15 @@ jobs:
   clang-format:
     name: Check conformance to the code format style
     runs-on: windows-2022
+    permissions: {}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
 
-      - name: Run clang-format
-        uses: cpp-linter/cpp-linter-action@v2
+      - name: Run clang-format and clang-tidy
+        uses: cpp-linter/cpp-linter-action@77c390c5ba9c947ebc185a3e49cc754f1558abb5  # v2.18.0
         id: linter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -26,12 +29,15 @@ jobs:
   check-changelist-modified:
     name: Check that the changelog has been updated
     runs-on: windows-2022
+    permissions: {}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Check what files have been modified
-        uses: dorny/paths-filter@v3.0.2
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36  # v3.0.2
         id: filter
         with:
           filters: |
