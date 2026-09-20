@@ -36,12 +36,16 @@ private:
 };
 static const LyricSourceFactory<MusixmatchLyricsSource> src_factory;
 
-static const char* g_api_url = "https://apic-desktop.musixmatch.com/ws/1.1/";
-static const char* g_common_params = "user_language=en&app_id=web-desktop-app-v1.0";
+static const char* g_api_url = "https://apic-appmobile.musixmatch.com/ws/1.1/";
+static const char* g_common_params = "user_language=en&app_id=mac-ios-v2.0";
 
 std::vector<LyricDataRaw> MusixmatchLyricsSource::get_song_ids(const LyricSearchParams& params,
                                                                abort_callback& abort) const
 {
+    // If this breaks, we can check the code used in ESLyric, which somebody may have fixed.
+    // That currently lives at:
+    // https://github.com/ESLyric/scripts/blob/82ea7351c8e0cb333fda1ae36b6917e68b6613c1/searcher/musixmatch.js
+
     const std::string_view apikey = preferences::searching::musixmatch_api_key();
     std::string url = std::string(g_api_url) + "track.search?" + g_common_params + "&subtitle_format=lrc";
     url += "&q_artist=" + urlencode(params.artist);
@@ -81,7 +85,40 @@ std::vector<LyricDataRaw> MusixmatchLyricsSource::get_song_ids(const LyricSearch
     cJSON* json_tracklist = cJSON_GetObjectItem(json_body, "track_list");
     if(!cJSON_IsArray(json_tracklist))
     {
-        LOG_WARN("Received musixmatch search result but track_list was malformed: %s", content.c_str());
+        // If our user token is invalid we don't get a body, we get a header asking us to renew it.
+        // In that case we should prompt the user to get a new token.
+        cJSON* json_header = cJSON_GetObjectItem(json_message, "header");
+        cJSON* json_hint = cJSON_GetObjectItem(json_header, "hint");
+        if(cJSON_IsString(json_hint) && std::string_view(json_hint->valuestring) == "renew")
+        {
+            LOG_INFO("Musixmatch token is invalid or expired, please generate a new one");
+            static bool should_prompt_for_new_token = true;
+            if(should_prompt_for_new_token)
+            {
+                // Only prompt once for every time that you launch fb2k.
+                // We *could* persist this to never ask again but searches will never work while this
+                // continues so people can just take Musixmatch out of their config.
+                should_prompt_for_new_token = false;
+                fb2k::inMainThread2(
+                    []
+                    {
+                        std::optional<std::string> token =
+                            preferences::searching::musixmatch_prompt_for_api_key_generation(
+                                "Your musixmatch token has expired or is invalid, searches against "
+                                "musixmatch will fail until a new one is generated",
+                                core_api::get_main_window());
+                        if(token.has_value())
+                        {
+                            LOG_INFO("Musixmatch token generated?");
+                        }
+                    });
+            }
+        }
+        else
+        {
+            LOG_WARN("Received musixmatch search result but track_list was malformed: %s", content.c_str());
+        }
+
         cJSON_Delete(json);
         return {};
     }

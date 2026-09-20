@@ -27,6 +27,57 @@ std::string_view preferences::searching::musixmatch_api_key()
     return std::string_view(cfg_search_musixmatch_token.get_ptr(), cfg_search_musixmatch_token.get_length());
 }
 
+std::optional<std::string> preferences::searching::musixmatch_prompt_for_api_key_generation(
+    std::string_view description,
+    HWND parent_window)
+{
+    std::string msg = std::string(description)
+                      + "\r\n\r\nWould you like OpenLyrics to attempt to get a token automatically for you now?";
+    popup_message_v3::query_t query = {};
+    query.title = "Musixmatch Help";
+    query.msg = msg.c_str();
+    query.buttons = popup_message_v3::buttonYes | popup_message_v3::buttonNo;
+    query.defButton = popup_message_v3::buttonNo;
+    query.icon = popup_message_v3::iconInformation;
+    uint32_t popup_result = popup_message_v3::get()->show_query_modal(query);
+    if(popup_result == popup_message_v3::buttonYes)
+    {
+        std::string output_token;
+        const auto async_search = [&output_token](threaded_process_status& /*status*/, abort_callback& abort)
+        { output_token = musixmatch_get_token(abort); };
+        bool success = threaded_process::g_run_modal(threaded_process_callback_lambda::create(async_search),
+                                                     threaded_process::flag_show_abort,
+                                                     parent_window,
+                                                     "Attempting to get Musixmatch token...");
+
+        if(success && !output_token.empty())
+        {
+            cfg_search_musixmatch_token.set_string(output_token.c_str(), output_token.length());
+
+            popup_message_v3::query_t success_query = {};
+            success_query.title = "Musixmatch Help";
+            success_query.msg = "Musixmatch token successfully retrieved and saved";
+            success_query.buttons = popup_message_v3::buttonOK;
+            success_query.defButton = popup_message_v3::buttonOK;
+            success_query.icon = popup_message_v3::iconInformation;
+            popup_message_v3::get()->show_query_modal(success_query);
+
+            return output_token;
+        }
+
+        popup_message_v3::query_t failed_query = {};
+        failed_query.title = "Musixmatch Help";
+        failed_query.msg = "Failed to automatically get a Musixmatch token.\r\n\r\nYou could try to get a token "
+                           "manually, using the instructions found "
+                           "here:\r\nhttps://github.com/khanhas/genius-spicetify#musicxmatch";
+        failed_query.buttons = popup_message_v3::buttonOK;
+        failed_query.defButton = popup_message_v3::buttonOK;
+        failed_query.icon = popup_message_v3::iconWarning;
+        popup_message_v3::get()->show_query_modal(failed_query);
+    }
+    return {};
+}
+
 class PreferencesSrcMusixmatch : public CDialogImpl<PreferencesSrcMusixmatch>, public auto_preferences_page_instance
 {
 public:
@@ -78,43 +129,15 @@ void PreferencesSrcMusixmatch::OnUIChange(UINT, int, CWindow)
 
 void PreferencesSrcMusixmatch::OnMusixmatchHelp(UINT, int, CWindow)
 {
-    popup_message_v3::query_t query = {};
-    query.title = "Musixmatch Help";
-    query.msg = "The Musixmatch source requires an authentication token to work. Without one it will not find any "
-                "lyrics.\r\n\r\nAn authentication token is roughly like a randomly-generated password that musixmatch "
-                "uses to differentiate between different users.\r\n\r\nWould you like OpenLyrics to attempt to get a "
-                "token automatically for you now?";
-    query.buttons = popup_message_v3::buttonYes | popup_message_v3::buttonNo;
-    query.defButton = popup_message_v3::buttonNo;
-    query.icon = popup_message_v3::iconInformation;
-    uint32_t popup_result = popup_message_v3::get()->show_query_modal(query);
-    if(popup_result == popup_message_v3::buttonYes)
+    std::optional<std::string> maybe_token = preferences::searching::musixmatch_prompt_for_api_key_generation(
+        "The Musixmatch source requires an authentication token to work. Without one it will not find any "
+        "lyrics.\r\n\r\nAn authentication token is roughly like a randomly-generated password that musixmatch "
+        "uses to differentiate between different users.",
+        m_hWnd);
+    if(maybe_token.has_value())
     {
-        std::string output_token;
-        const auto async_search = [&output_token](threaded_process_status& /*status*/, abort_callback& abort)
-        { output_token = musixmatch_get_token(abort); };
-        bool success = threaded_process::g_run_modal(threaded_process_callback_lambda::create(async_search),
-                                                     threaded_process::flag_show_abort,
-                                                     m_hWnd,
-                                                     "Attempting to get Musixmatch token...");
-
-        if(!success || output_token.empty())
-        {
-            popup_message_v3::query_t failed_query = {};
-            failed_query.title = "Musixmatch Help";
-            failed_query.msg = "Failed to automatically get a Musixmatch token.\r\n\r\nYou could try to get a token "
-                               "manually, using the instructions found "
-                               "here:\r\nhttps://github.com/khanhas/genius-spicetify#musicxmatch";
-            failed_query.buttons = popup_message_v3::buttonOK;
-            failed_query.defButton = popup_message_v3::buttonOK;
-            failed_query.icon = popup_message_v3::iconWarning;
-            popup_message_v3::get()->show_query_modal(failed_query);
-        }
-        else
-        {
-            std::tstring ui_token = to_tstring(output_token);
-            SetDlgItemText(IDC_SEARCH_MUSIXMATCH_TOKEN, ui_token.c_str());
-        }
+        std::tstring ui_token = to_tstring(maybe_token.value());
+        SetDlgItemText(IDC_SEARCH_MUSIXMATCH_TOKEN, ui_token.c_str());
     }
 }
 
